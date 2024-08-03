@@ -91,9 +91,18 @@
     ```
 - 다음 명령어로 노드의 목록과 쿠버네티스 버전을 출력해 설치가 정상적으로 완료됐는지 확인한다.
     ```
-    kubectl get node
+    $ kubectl get node
+    NAME                  STATUS   ROLES           AGE     VERSION
+    i-082350d042fdf1127   Ready    node            4m44s   v1.29.6
+    i-08848aab2e769ea7c   Ready    node            4m27s   v1.29.6
+    i-0901b80828e759096   Ready    control-plane   7m31s   v1.29.6
+    i-0b4aed31c342e5be0   Ready    node            4m50s   v1.29.6
     ```
 - kops로 생성한 쿠버네티스 클러스터 삭제
     ```
     kops delete cluster --name=$NAME --yes --state=$KOPS_STATE_STORE
     ```
+
+> kops로 클러스터를 생성하면 control-plane와 node 당 ec2인스턴스가 생성되며, S3 버킷에 kops 설정 파일이 배포가 된다. 또한
+> ec2가 사용하는 VPC가 생성되며 그와 관련된 네트워크 리소스들도 생성되는 것을 확인할 수 있다. 이는 kops 배포를 통해 자동으로 생성
+> 되는 것이며 kops delete를 통해 자동으로 삭제된다.
