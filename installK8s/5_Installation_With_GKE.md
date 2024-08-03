@@ -56,7 +56,22 @@
 
 
 
+## 4. 리소스 정리
+- 아까 만든 웹사이트에서 해당 클러스터 수동 삭제 진행
+- kubeconfig의 cluster 정보 삭제
+    ```
+    kubectl config delete-cluster gke_master-anagram-431402-a2_asia-northeast3_covy-cluster-1
+    ```
+- kubeconfig의 context 정보 삭제
+    ```
+    kubectl config delete-context gke_master-anagram-431402-a2_asia-northeast3_covy-cluster-1
+    ```
+- 삭제 확인
+    ```
+    kubectl config get-contexts
 
+    cat ~/.kube/config
+    ```
 
 
 
