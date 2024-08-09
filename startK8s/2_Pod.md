@@ -104,7 +104,72 @@
 
 - 쿠버네티스 외부 또는 내부에서 파드에 접근하려면 `service`라고 하는 쿠버네티스 오브젝트를 따로 생성해야 하지만, 지금은 서비스 오브젝트 없이 IP만으로 Nginx 파드에 접근해 보겠다.
 - 클러스터의 노드 중 하나에 접속한 뒤 다음과 같이 Nginx 파드의 IP로 HTTP 요청을 전송한다.
+    ```
+    $ curl 10.1.0.14
+    ```
+- 만약, 클러스터의 노드로 접속하는 것이 여의치 않은 상황이면 다음 명령어를 통해 클러스터 내부에 테스트용 파드를 생성해 임시로 사용할 수 있다.
+    ```
+    $ kubectl run -i --tty --rm --image=alicek106/ubuntu:curl --restart=Never debug -- /bin/bash
 
+    If you don't see a command prompt, try pressing enter.
+
+    $ root@debug:/#
+    $ root@debug:/# ls
+    bin  boot  dev  etc  home  lib  lib64  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+    root@debug:/# curl 10.1.0.14
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>Welcome to nginx!</title>
+    <style>
+    html { color-scheme: light dark; }
+    body { width: 35em; margin: 0 auto;
+    font-family: Tahoma, Verdana, Arial, sans-serif; }
+    </style>
+    </head>
+    <body>
+    <h1>Welcome to nginx!</h1>
+    <p>If you see this page, the nginx web server is successfully installed and
+    working. Further configuration is required.</p>
+
+    <p>For online documentation and support please refer to
+    <a href="http://nginx.org/">nginx.org</a>.<br/>
+    Commercial support is available at
+    <a href="http://nginx.com/">nginx.com</a>.</p>
+
+    <p><em>Thank you for using nginx.</em></p>
+    </body>
+    </html>
+    ```
+
+<br>
+
+- 이번엔 파드 컨테이너 내부로 직접 들어가 보겠다.
+- `docker exec`와 비슷하게 쿠버네티스에도 `kubectl exec` 명령어로 파드의 컨테이너에 명령어를 전달할 수 있다.
+- 예를 들어, my-nginx-pod에서 bash 쉘을 실행하되, -it 옵션으로 쉘을 유지할 수 있다.
+    ```
+    kubectl exec -it my-nginx-pod bash
+    ```
+
+<br>
+
+- 도커에서 `docker logs` 명령어를 사용했던 것처럼 쿠버네티스에서도 `kubectl logs` 명령어로 파드의 로그를 확인할 수 있다.
+- 다음 명령어를 사용하면 Nginx 파드의 표준 출력 로그를 확인할 수 있다.
+    ```
+    kubectl logs my-nginx-pod
+    ```
+
+<br>
+
+- 쿠버네티스의 오브젝트는 kubectl delete -f 명령어로 쉽게 삭제할 수 있다.
+- 다음 명령어는 nginx-pod.yaml에 정의된 Nginx 파드를 삭제한다.
+```
+kubectl delete -f nginx-pod.yaml
+
+# 또는
+
+kubeclt delete pod <파드 이름>
+```
 
 
 
