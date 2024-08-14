@@ -172,10 +172,131 @@ kubeclt delete pod <파드 이름>
 ```
 
 
-
-
 ## 파드 vs 도커 컨테이너
+- 위의 기능들만 보면 파드는 `docker run`으로 생성한 단일 nginx 컨테이너와 크게 다르지 않아 보인다.
+- 왜냐하면 파드는 컨테이너 IP 주소를 가지고 있어 쿠버네티스 클러스터 내부에서 접근할 수 있고, `kubectl exec` 명령어로 파드 컨테이너 내부로 들어갈 수도 있으며, `kubectl logs` 명령어로 파드의 로그를 확인할 수도 있기 때문이다.
+- 그렇다면 쿠버네티스는 '도커 컨테이너'가 아니라 왜 굳이 '파드'라는 새로운 개념을 사용할까??
+
+
+### 파드라는 개념을 사용하는 예시
+
+- 쿠버네티스가 파드를 사용하는 이유는 컨테이너 런타임의 인터페이스 제공 등 여러 가지가 있지만, 그 이유 중 하나는 여러 리눅스 네임스페이스(namespace)를 공유하는 여러 컨테이너들을 추상화된 집합으로 사용하기 위해서이다.
+
+> 좀 더 쉽게 이해할 수 있게 파드를 사용하는 예시를 하나 더 보자.
+- `kubectl get pods` 명령어로 파드의 목록을 출력했을 떄, READY 항목에서 1/1이라는 출력을 봤을 것이다.
+- Nginx 파드에는 1개의 컨테이너가 정의돼 있으며, 이 컨테이너는 정상적으로 준비됐다는 뜻이다.
+    ```
+    $ kubectl get pod
+    NAME           READY   STATUS    RESTARTS   AGE
+    my-nginx-pod   1/1     Running   0          23s
+    ```
+- 실제로 대부분 쿠버네티스의 컨테이너 애플리케이션은 이처럼 1개의 컨테이너로 파드를 구성해 사용하지만, `1/1`이라는 항목에서 알 수 있듯이 파드는 반드시 1개의 컨테이너로 구성해야 하는 것은 아니다.
+> 다시 말하면 READY 항목은 파드의 컨테이너 개수에 따라 2/2도 될 수 있고, 3/3도 될 수 있다.
+
+- 그렇다면 이번에는 Nginx 파드에 새로운 우분투 컨테이너를 추가해 보겠다.
+- 이전에 사용한 YAML 파일을 확장해 아래 내용으로 새로운 YAML 파일을 작성한다.
+    ```yaml
+    apiVersion: v1
+    kind: Pod
+    metadata:
+    name: my-nginx-pod
+    spec:
+    containers:
+    - name: my-nginx-container
+        images: nginx:latest
+        ports:
+        - containerPort: 80
+        protocol: TCP
+
+    - name: ubuntu-sidecar-container
+        image: alicek106:rr-test:curl
+        command: ["tail"]
+        args: ["-f", "/dev/null"]  # 컨테이너가 종료되지 않도록 유지
+    ```
+    - curl이 미리 설치된 우분투 이미지인 'alicek106:rr-test:curl'을 사용했다.
+    - 이 컨테이너가 종료되지 않기 위해 'tail -f /dev/null'이라는 단순한 동작만 실행한다.
+    - `YAML에서 대시(-)를 사용하는 항목은 여러 개의 항목을 정의할 수 있다.`
+    - 따라서 이번에는 파드에 우분투 컨테이너를 하나 더 추가한 것이다.
+
+> 파드의 YAML 파일에서 사용되는 command와 args는 컨테이너 내부에서 가장 먼저 실행될 프로세스를 지정한다. YAML 파일에서의
+> command는 도커 컨테이너의 Entrypoint와 동일하고, 파드에서의 args는 도커 컨테이너의 Cmd(커맨드)와 동일하다고 이해하면 쉽다.
+
+> 참고로 도커에서 Entrypoint와 CMD를 함께 사용할 떄, Entrypoint는 실행할 명령을 설정하고, CMD는 해당 명령에 전달될 기본 매개변수를 제공하는 식으로 사용한다.
+
+- 앞서 파드를 생성했던 것처럼 `kubectl apply -f` 명령을 사용해 YAML 파일을 쿠버네티스에 적용하고, 시간이 지나면 Nginx 파드에 2개의 컨테이너가 실행 중인 것을 확인할 수 있다.
+    ```
+    $ kubectl get pods
+    NAME           READY   STATUS    RESTARTS   AGE
+    my-nginx-pod   2/2     Running   0          103s
+    ```
+- 이제 새롭게 추가된 우분투 컨테이너에 내부로 들어가 curl 명령어를 localhost로 보내볼 것이다.
+    ```
+    $ kubectl exec -it my-nginx-pod -c ubuntu-sidecar-container bash
+
+    root@my-nginx-pod:/# curl localhost
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <title>Welcome to nginx!</title>
+    <style>
+    html { color-scheme: light dark; }
+    body { width: 35em; margin: 0 auto;
+    font-family: Tahoma, Verdana, Arial, sans-serif; }
+    </style>
+    </head>
+    <body>
+    <h1>Welcome to nginx!</h1>
+    <p>If you see this page, the nginx web server is successfully installed and
+    working. Further configuration is required.</p>
+
+    <p>For online documentation and support please refer to
+    <a href="http://nginx.org/">nginx.org</a>.<br/>
+    Commercial support is available at
+    <a href="http://nginx.com/">nginx.com</a>.</p>
+
+    <p><em>Thank you for using nginx.</em></p>
+    </body>
+    </html>
+    ``` 
+- ubuntu-sidecar-container 컨테이너 내부에서 Nginx 서버를 실행하고 있지 않는데도, 우분투 컨테이너의 로컬호스트에서 Nginx 서버로 접근이 가능한 것을 확인할 수 있다.
+- 이는 파드 내의 컨테이너들이 네트워크 네임스페이스 등과 같은 리눅스 네임스페이스를 공유해 사용하기 때문이다.
+
+> 네트워크 네임스페이스는 컨테이너의 고유한 네트워크 환경을 제공해주는 역할을 담당한다. 예를 들어 docker run 명령어로 docker0
+> 브리지에 연결된 컨테이너가 생성됐다면, 그 컨테이너는 자기 자신만의 고유한 네트워크 네임스페이스를 가지게 된다. 그렇기 때문에 호스트
+> 및 다른 컨테이너와 다른 고유한 IP를 유지하게 된다.
+
+- 도커 네트워크 기능에서 `docker run --net container:(컨테이너 이름)` 옵션을 사용한다면, 네트워크 네임스페이스를 컨테이너 간에 공유해 사용할 수 있게 하여 여러 개의 컨테이너가 동일한 네트워크 환경을 가지게 된다.
+- `쿠버네티스의 파드 또한 이러한 리눅스 네임스페이스의 공유 개념을 사용하게 되는 것이다.`
+    <img src="./img/그림6.4.png" width='600'>
+
+- 그러나 파드가 공유하는 리눅스 네임스페이스에 네트워크 환경만 있는 것은 아니다.
+- 1개의 파드에 포함된 컨테이너들은 여러 개의 리눅스 네임스페이스를 공유한다.
+- 그러나 지금은 이런 것들에 대해 자세히 알 필요가 없으며, 지금은 `파드 내부의 컨테이너들은 네트워크와 같은 리눅스 네임스페이스를 공유한다`라는 것만 알고 넘어가면 된다.
+
+
+
 ## 완전한 애플리케이션으로서의 파드
+- 앞서 언급했듯이, 실제 쿠버네티스 환경에서는 1개의 컨테이너로 구성된 파드를 사용하는 경우가 많으며, 앞으로의 예시도 그럴 예정이다.
+- 그렇다면 왜 하나의 파드에 여러 개의 컨테이너가 함께 포함돼야 하는지에 대해 의문점이 생길 수도 있다.
+- 여기서 한 가지 유의해야 할 점은 `하나의 파드는 하나의 완전한 애플리케이션`이라는 점이다.
+- Nginx 컨테이너는 그 자체만으로도 완전한 애플리케이션이기 때문에 하나의 파드에 2개의 Nginx 컨테이너가 정의되는 것은 바람직하지 않다.
+- 따라서 우리가 처음에 생성했던 파드에서는 1개의 Nginx 컨테이너만을 정의했다.
+
+### sidecar(사이드카) 컨테이너
+- Nginx 컨테이너가 실행되기 위해 부가적인 기능을 필요로 할 수 있다.
+- 예를 들어, Nginx의 설정 파일의 변경사항을 갱신해주는 설정 리로더(reloader) 프로세스, 로그를 수집해주는 프로세스 등, 이러한 프로세스는 Nginx 컨테이너와 함께 실행되어야 한다.
+- 이런 경우 파드의 주 컨테이너를 Nginx로 설정하며, 기능 확장을 위한 추가 컨테이너를 파드에 포함시킬 수 있다.
+- `이렇게 파드에 정의된 부가적인 컨테이너를 사이드카(sidecar) 컨테이너 라고 부르며, 사이드카 컨테이너는 파드 내의 다른 컨테이너와 네트워크 환경 등을 공유하게 된다.`
+- 때문에 파드에 포함된 컨테이너들은 모두 같은 워커 노드에서 함께 실행된다.
+
+> 이러한 구조 및 원리에 따라 파드에 정의된 여러 개의 컨테이너는 하나의 완전한 애플리케이션으로서 동작하게 되는 것이며, 이것이
+> 도커 컨테이너와 쿠버네티스 파드의 차이점이다.
+
+
+### Pause 컨테이너
+- 파드의 네트워크 namespace는 Pause라는 이름의 컨테이너로부터 네트워크를 공유받아 사용한다. 
+- Pause 컨테이너는 네임스페이스를 공유하기 위해 파드별로 생성되는 컨테이너이며, Pause 컨테이너는 각 파드에 대해 자동으로 생성된다. 
+- `ps aux | grep pause` 명령어를 통해 확인할 수 있으며, 도커 엔진을 컨테이너 런타임으로 쓰고 있다면 `docker ps` 명령어로 pause 컨테이너를 직접 확인할 수 있다.
 
 
 
