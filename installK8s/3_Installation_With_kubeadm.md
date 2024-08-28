@@ -1,178 +1,16 @@
 # 여러 개의 서버를 이용해 쿠버네티스 클러스터를 설치하는 방법 - kubeadm
 
-## Environment
-- 쿠버네티스의 각종 기능을 제대로 사용하기 위해서는 최소 3대 이상의 서버를 준비해야 한다.
-- 따라서 이번에는 1개의 마스터와 3개의 워커 노드로 구성된 테스트용 쿠버네티스 클러스터를 설치하는 방법을 배울 것이다.
-- 먼저 각 서버에서 아래의 항목들이 준비 돼어야 한다.
-    1. 모든 서버의 시간이 ntp를 통해 동기화 되어 있어야 한다.
-    2. 모든 서버의 MAC 주소가 달라야 한다. 가상 머신을 복사해 사용할 경우, 같은 맥 주소를 가지는 서버가 존재할 수 있다.
-    3. 모든 서버가 2GB 메모리, 2CPU 이상의 충분한 자원을 가지고 있는지 확인한다. 사용하는 설치 도구에 따라 요구하는 최소 자원의 크기가 조금씩 다를 수 있다.
-    4. 모든 서버에서 메모리 Swap을 비활성화 해야한다. 메모리 스왑이 활성화 돼 있으면 컨테이너의 성능이 일관되지 않을 수 있기 때문에 대부분의 쿠버네티스 설치 도구는 메모리 스왑을 허용하지 않는다.
-        - 스왑 비활성화 명령어
-            ```
-            swapoff -a
-            ```
-
-> 실제 서비스 운영 단계에 적용하려면 마스터 노드의 다중화와 같은 추가적인 설정이 필요할 수도 있지만, 간소화된 구성으로 쿠버네티스 클러스터를 설치해도 쿠버네티스의 핵심 기능을 사용하는 데에는 지장이 없어 크게 신경쓰지 않아도 된다.
-
-
-## ~~kubeadm으로 쿠버네티스 설치 (책을 참고하였지만 잘 안됨)~~
-- 쿠버네티스는 일반적인 서버 클러스터 환경에서도 쿠버네티스를 쉽게 설치할 수 있는 kubeadm이라는 관리 도구를 제공한다.
-- kubeadm은 쿠버네티스 커뮤니티에서 권장하는 설치 방법 중 하나이다.
-- 또한 Minikube 및 kubespray와 같은 설치 도구도 내부적으로는 kubeadm을 사용하고 있기 때문에 현재도 활발히 개발되고 있는 쿠버네티스 설치 도구이다.
-- kubeadm은 온프레미스 환경, 클라우드 인프라 환경에 상관 없이 일반적인 리눅스 서버라면 모두 사용 가능하다.
-
-> AWS에서 Ubuntu기반 EC2 서버를 4개 생성한 다음에 진행할 것이다.
-
-- Terraform으로 VPC 따로 구성하여 인스턴스 4개 배치하기
-    ```
-    provider "aws" {
-    region = "ap-northeast-2"
-    }
-
-    resource "aws_vpc" "kube" {
-    cidr_block = "172.31.0.0/16"
-    tags = {
-        Name = "kube-vpc"
-    }
-    }
-
-    resource "aws_subnet" "public-b" {
-    vpc_id            = aws_vpc.kube.id
-    cidr_block        = "172.31.0.0/24"
-    availability_zone = "ap-northeast-2b"
-    map_public_ip_on_launch = true
-
-    tags = {
-        Name = "kube-subnet-public-b"
-    }
-    }
-
-    resource "aws_internet_gateway" "kube" {
-    vpc_id = aws_vpc.kube.id
-    tags = {
-        Name = "kube-igw"
-    }
-    }
-
-    resource "aws_route_table" "kube" {
-    vpc_id = aws_vpc.kube.id
-    route {
-        cidr_block = "0.0.0.0/0"
-        gateway_id = aws_internet_gateway.kube.id
-    }
-    tags = {
-        Name = "kube-rt"
-    }
-    }
-
-    resource "aws_route_table_association" "kube" {
-    subnet_id      = aws_subnet.public-b.id
-    route_table_id = aws_route_table.kube.id
-    }
-
-    resource "aws_security_group" "kube" {
-    vpc_id = aws_vpc.kube.id
-
-    ingress {
-        from_port   = 22
-        to_port     = 22
-        protocol    = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    egress {
-        from_port   = 0
-        to_port     = 0
-        protocol    = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
-
-    tags = {
-        Name = "kube-sg"
-    }
-    }
-
-    resource "aws_instance" "kube" {
-    count         = 4
-    ami           = "ami-062cf18d655c0b1e8"
-    instance_type = "t3.medium"
-    key_name      = "covyEc2"
-    subnet_id     = aws_subnet.public-b.id
-    vpc_security_group_ids = [aws_security_group.kube.id]
-
-    tags = {
-        Name = "kube-${count.index == 0 ? "master1" : "worker${count.index}"}"
-    }
-
-    user_data = <<-EOF
-                #!/bin/bash
-                apt update && apt install -y ntp
-                systemctl enable ntp
-                systemctl start ntp
-                echo "vm.swappiness = 0" >> /etc/sysctl.conf
-                sysctl -p
-                swapoff -a
-                EOF
-
-    private_ip = count.index == 0 ? "172.31.0.100" : "172.31.0.10${count.index}"
-    }
-
-    output "instance_ips" {
-    value = aws_instance.kube.*.public_ip
-    }
-    ```
-
-- EC2 인스턴스 4개 생성하기
-    - 인스턴스 이름과 private IP
-    ```
-    kube-master1  172.31.0.100
-    kube-worker1  172.31.0.101
-    kube-worker2  172.31.0.102
-    kube-worker3  172.31.0.103
-    ```
-
-### 1. 쿠버네티스 저장소 추가
-- 쿠버네티스를 설치할 모든 노드에서 다음 명령어를 차례대로 입력해 쿠버네티스 저장소를 추가한다.
-    ```
-    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
-    cat << EOF > /etc/apt/sources.list.d/kubernetes.list
-    deb http://apt.kubernetes.io/ kubernetes-xenial main
-    EOF
-    ```
-- 이렇게 하려고 했으나 apt-key가 deprecated되어서 다른 방법으로 Kubernetes 저장소의 공개 키를 추가
-    ```
-    curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo tee /etc/apt/trusted.gpg.d/kubernetes.gpg >/dev/null
-    ```
-    - curl로 쿠버네티스 공개 키를 받아오기
-    - sudo tee로 받아온 키를 /etc/apt/trusted.gpg.d/kubernetes.gpg 파일로 저장, tee 명령은 sudo와 함께 사용하여 루트 권한으로 파일을 작성할 수 있다.
-    - '>/dev/null'은 tee 명령의 표준 출력을 억제하여 터미널에 출력되지 않도록 한다.
-- 그 후 소스 리스트 파일 추가
-    ```
-    cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
-    deb http://apt.kubernetes.io/ kubernetes-xenial main
-    EOF
-    ```
-    - /etc/apt/sources.list.d/kubernetes.list 내의 파일들은 APT가 패키지 데이터를 가져올 수 있는 저장소의 위치를 지정한다.
-    - 'deb http://apt.kubernetes.io/ kubernetes-xenial main'은 위의 파일에 추가될 내용으로, 쿠버네티스 패키지가 포함된 저장소의 정보를 나타낸다.
-
-### 2. containerd 및 kubeadm 설치
-- 쿠버네티스 컨테이너 런타임 인터페이스(CRI)를 지원하는 구현체를 통해 컨테이너를 사용한다.
-- containerd, cri-o(크라이-오) 등이 컨테이너 런타임 인터페이스를 통해 컨테이너를 제어할 수 있는 방법을 제공하며, 여기서는 containerd를 설치해 쿠버네티스와 연동하는 방법을 사용할 것이다.
-- 도커를 설치하면 containerd가 함께 설치되므로 이번에는 도커에 포함된 containerd를 쿠버네티스와 연동해볼 것이다.
-
-- 모든 노드에서 도커를 먼저 설치한다.
-    ```
-    wget -qO- get.docker.com | sh
-    ```
-
-> 근데 사실 여기서 설명하는 방법은 kubernetes가 컨테이너와 통신하기 위해서 컨테이너 런타임 인터페이스(CRI)가 존재해야 하는데
-> CRI의 종류에는 containerd, cri-o 가 있다. 이 중에서 containerd는 도커에 자체적으로 내장되어 있기 때문에 도커를 설치하여
-> 거기에 있는 containerd를 컨테이너 런타임 인터페이스로 사용하는 것이지만, 이슈가 한 두가지가 아니여서 그냥 공식문서를 참고하여
-> containerd만 설치하기로 하였다.
-
-
 ## kubeadm 설치하기 (공식문서 참고)
+
+### server IP Address
+```
+kube-master1  192.168.219.151
+kube-worker1  192.168.219.152
+kube-worker2  192.168.219.153
+kube-worker3  192.168.219.154
+```
+
+> 가상머신을 이용해 4개의 ubuntu server를 생성
 
 ### 시작하기 전에 확인 사항
 - 호환되는 리눅스 머신. 쿠버네티스 프로젝트는 데비안 기반 배포판, 레드햇 기반 배포판, 그리고 패키지 매니저를 사용하지 않는 경우에 대한 일반적인 가이드를 제공한다.
@@ -181,7 +19,14 @@
 - 클러스터의 모든 머신에 걸친 전체 네트워크 연결. (공용 또는 사설 네트워크면 괜찮음)
 - 모든 노드에 대해 고유한 호스트 이름, MAC 주소 및 product_uuid.
 - 컴퓨터의 특정 포트들 개방. 
+    ```
+    sudo iptables -A INPUT -p tcp --dport 6443 -j ACCEPT
+    sudo iptables -nL  # 확인
+    ```
 - 스왑의 비활성화. kubelet이 제대로 작동하게 하려면 반드시 스왑을 사용하지 않도록 설정한다.
+    ```
+    sudo swapoff -a
+    ```
 
 ### MAC 주소 및 product_uuid가 모든 노드에 대해 고유한지 확인
 - 사용자는 ip link 또는 ifconfig -a 명령을 사용하여 네트워크 인터페이스의 MAC 주소를 확인할 수 있다.
@@ -193,25 +38,14 @@
 > 나는 위의 terraform 코드에 맞게 VPC를 하나 생성하고 거기에 subnet을 따로 할당하는 방식으로 생성하였다.
 
 ### 필수 포트 확인
-```
-nc 127.0.0.1 6443 -v
-```
-
-- terraform을 통해 ec2의 인스턴스 기존의 보안그룹에 6443 인바운드 규칙을 추가하였다.
+- 해당 포트가 사용중인지 확인한다. 
     ```
-    resource "aws_security_group_rule" "allow_kube_6443" {
-    type              = "ingress"
-    from_port         = 6443
-    to_port           = 6443
-    protocol          = "tcp"
-    cidr_blocks       = ["0.0.0.0/0"]
-    security_group_id = "sg-08f19b2bb1635c1cf"  # 기존 보안 그룹 ID
-    }
+    $ nc 127.0.0.1 6443 -v
+    nc: connect to localhost (127.0.0.1) port 6443 (tcp) failed: Connection refused
     ```
 
 ### 컨테이너 런타임 설치
-- 파드에서 컨테이너를 실행하기 위해, 쿠버네티스는 컨테이너 런타임을 사용한다.
-- 기본적으로, 쿠버네티스는 컨테이너 런타임 인터페이스(CRI)를 사용하여 사용자가 선택한 컨테이너 런타임과 인터페이스한다.
+- kubernetes가 컨테이너와 통신하기 위해서 컨테이너 런타임 인터페이스(CRI)가 존재해야 하는데, CRI의 종류에는 containerd, cri-o 가 있다. 
 - 런타임을 지정하지 않으면, kubeadm은 잘 알려진 엔드포인트를 스캐닝하여 설치된 컨테이너 런타임을 자동으로 감지하려고 한다.
 - 컨테이너 런타임이 여러 개 감지되거나 하나도 감지되지 않은 경우, kubeadm은 에러를 반환하고 사용자가 어떤 것을 사용할지를 명시하도록 요청한다.
 
@@ -236,6 +70,12 @@ nc 127.0.0.1 6443 -v
 
     systemctl daemon-reload
     systemctl enable --now containerd
+    ```
+- containerd 인터페이스 사용할 수 있는 그룹 생성 및 할당
+    ```
+    sudo groupadd containerd
+    sudo usermod -aG containerd covy
+    sudo chown root:containerd /run/containerd/containerd.sock
     ```
 2. runc 설치
 - [여기](https://github.com/opencontainers/runc/releases ) 참고하여 해당 아키텍처에 맞는 파일 선택, runc.<ARCH>
@@ -270,11 +110,11 @@ nc 127.0.0.1 6443 -v
     ```
 - 설정 사항을 반영하기 위해 containerd를 재시작
     ```
-    systemctl restart containerd
+    sudo systemctl restart containerd
     ```
 - 잘 실행되는지 확인하기
     ```
-    systemctl status containerd
+    sudo systemctl status containerd
     ```
 
 5. kubeadm, kubelet and kubectl 설치하기 [(참고)](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/#installing-kubeadm-kubelet-and-kubectl)
@@ -306,7 +146,7 @@ nc 127.0.0.1 6443 -v
 ### 쿠버네티스 클러스터 초기화
 - 마스터 노드로 사용할 호스트에서 다음 명령어로 클러스터를 초기화 한다.
     ```
-    kubeadm init --apiserver-advertise-address 172.31.0.100 --pod-network-cidr=192.168.0.0/16 --cri-socket unix:///var/run/containerd/containerd.sock
+    sudo kubeadm init --apiserver-advertise-address 192.168.219.151 --pod-network-cidr=10.240.0.0/16 --cri-socket unix:///var/run/containerd/containerd.sock
     ```
     - `--apiserver-advertise-address` 옵션의 인자에 다른 노드가 마스터에게 접근할 수 있는 IP 주소를 환경에 맞게 입력한다. 위 예시는 Kube-master1 호스트에 접근할 수 있는 IP주소가 172.31.0.100인 경우다.
     - `--pod-network-cidr`은 쿠버네티스에서 사용할 컨테이너의 네트워크 대역이며, 각 서버의 네트워크 대역과 중복되지 않게 적절히 선택하면 된다.
@@ -347,7 +187,8 @@ nc 127.0.0.1 6443 -v
     ```
 - 맨 마지막에 출력된 명령어인 kubeadm join ~ 은 마스터를 제외한 워커 노드들에서 실행한다. 단, --cri-socket 옵션을 추가해줘야 한다.
     ```
-    kubeadm join 172.31.0.100:6443 --token wsmyme.0e34qjtl9jx2ivqe --discovery-token-ca-cert-hash sha256:8584be3ec67e2aed8c0c8e91742e505ea60e20e55693d99277061173bd061798 --cri-socket unix:///var/run/containerd/containerd.sock
+    sudo kubeadm join 192.168.219.151:6443 --token b109o5.5ghoh9b2a92h3ou4 \
+    --discovery-token-ca-cert-hash sha256:a8dae587b78c59809425ddbf962f8d5f7cf47ca1a4004c53a57c4683e3604250--cri-socket unix:///var/run/containerd/containerd.sock
     ```
     > 참고로 위에서 설정한 네트워크 트래픽을 포워딩 설정도 각 워커 노드 별로 다 해줘야 한다. 위의 설정은 영구적으로 IP 포워딩을 활성화 하는 것이고 간단하게 하려면 다음 명령어 한 줄만 치면 된다.
     ```
@@ -355,8 +196,10 @@ nc 127.0.0.1 6443 -v
     ```
 
 ### 컨테이너 네트워크 애드온 설치
-- 쿠버네티스의 컨테이너 간 통신을 위해 flannel, weaveNet 등 여러 오버레이 네트워크를 사용할 수 있다.
-- 이 중 calico를 설치해보자.
+- Pod가 쿠버네티스 클러스터에 배포될 때, 각 Pod는 어떤 워커 노드에 배포될지 예측할 수 없으며,  각 Pod는 클러스터 내에서 고유한 IP 주소를 할당받는다.
+- Pod 간 통신이 필요할 때, 어떤 Pod가 어느 노드에 있는지 상관없이 통신이 원활히 이루어지도록 관리할 수 있어야 한다.
+- 이를 위해 네트워크 애드온의 설치는 필수적이며, 종류에는 Calico, Flannel, Weave 등이 있다.
+- 이 중, 제일 많이 사용되는 Calico를 설치할 것이다.
     ```
     kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
     ```
@@ -364,14 +207,14 @@ nc 127.0.0.1 6443 -v
     ```
     wget https://docs.projectcalico.org/manifests/calico.yaml
 
-    vi calico.yaml
+    sudo ivi calico.yaml
     ```
     ```
     ...
                 # chosen from this range. Changing this value after installation will have
                 # no effect. This should fall within `--cluster-cidr`.
                 - name: CALICO_IPV4POOL_CIDR
-                value: "10.244.0.0/16"
+                value: "10.240.0.0/16"
                 # Disable file logging so `kubectl logs` works.
                 - name: CALICO_DISABLE_FILE_LOGGING
                 value: "true"
