@@ -26,6 +26,12 @@ kube-worker3  192.168.219.154
 - 스왑의 비활성화. kubelet이 제대로 작동하게 하려면 반드시 스왑을 사용하지 않도록 설정한다.
     ```
     sudo swapoff -a
+
+    # 스왑 영구 비활성화
+    sudo sed -i '/swap/d' /etc/fstab
+    
+    # 확인
+    grep swap /etc/fstab
     ```
 
 ### MAC 주소 및 product_uuid가 모든 노드에 대해 고유한지 확인

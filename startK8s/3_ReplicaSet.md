@@ -78,10 +78,54 @@ my-nginx-pod   1/1     Terminating   0          7m9s
 - 레플리카셋이 수행하는 역할은 다음과 같다.
     1. `정해진 수의 동일한 파드가 항상 실행되도록 관리`
     2. `노드 장애 등의 이유로 파드를 사용할 수 없다면 다른 노드에서 파드를 다시 생성`
+- 따라서 레플리카셋을 사용한다면, `동일한 Nginx 파드를 안정적으로 여러 개 실행할 수도 있고, 워커 노드에 장애가 생기더라도 정해진 개수의 파드를 유지할 수도 있다.`
 
+> 이처럼 `Replicaset`이 우리를 대신하여 파드를 관리하기 때문에, 앞으로 파드를 직접 관리할 일은 거의 없을 것이다.
+
+### TroubleShooting
+- kube-worker3 노드 서버를 껐다 키니까, kubelet가 정상적으로 실행되지 않았다.
+```
+covy@kube-worker3:~$ sudo systemctl status kubelet
+● kubelet.service - kubelet: The Kubernetes Node Agent
+     Loaded: loaded (/usr/lib/systemd/system/kubelet.service; enabled; preset: enabled)
+    Drop-In: /usr/lib/systemd/system/kubelet.service.d
+             └─10-kubeadm.conf
+     Active: activating (auto-restart) (Result: exit-code) since Wed 2024-08-28 10:00:27 UTC>
+       Docs: https://kubernetes.io/docs/
+    Process: 1748 ExecStart=/usr/bin/kubelet $KUBELET_KUBECONFIG_ARGS $KUBELET_CONFIG_ARGS $>
+   Main PID: 1748 (code=exited, status=1/FAILURE)
+        CPU: 93ms
+```
+- 그래서 로그를 살펴보았다.
+```
+sudo journalctl -u kubelet -b --no-pager
+
+...
+09:59:54.818836    1713 run.go:74] "command failed" err="failed to run Kubelet: running with swap on is not supported, please disable swap! or set --fail-swap-on flag to false. /proc/swaps contained: [Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority /swap.img                               file\t\t2262012\t\t0\t\t-2]"
+...
+```
+- 바로 껐다 켜지면 swap 영역이 활성화 되는 것이 문제였다.
+- 그래서 영구적으로 swap 영역을 비활성화 했다.
+```
+sudo sed -i '/swap/d' /etc/fstab
+```
 
 
 
 ## 레플리카셋 사용하기
+- 이번에는 Nginx 파드를 생성하는 레플리카셋을 만들어 볼것이다.
+- replicaset-nginx.yaml 파일을 작성해보자.
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: replicaset-nginx
+spec:
+  replicas: 3
+
+```
+
+
+
 ## 레플리카셋의 동작 원리
 ## 레플리케이션 컨트롤러 vs. 레플리카셋
