@@ -106,15 +106,27 @@ sudo journalctl -u kubelet -b --no-pager
 ```
 - 바로 껐다 켜지면 swap 영역이 활성화 되는 것이 문제였다.
 - 그래서 영구적으로 swap 영역을 비활성화 했다.
-```
-sudo sed -i '/swap/d' /etc/fstab
-```
+    ```
+    sudo sed -i '/swap/d' /etc/fstab
+    ```
+    - `/etc/fstab` : 파일 시스템과 관련된 설정 파일
+    - `sed` : 파일에서 문자열을 찾고 대체하거나, 특정 패턴을 기준으로 행을 삭제하는 데 사용되는 유닉스 스트림 편집기
+    - `-i` : "in-place"의 약자로, 원본 파일을 수정하는 옵션, 이 옵션이 없으면 'sed'는 수정된 내용을 화면에 출력만 하고, 파일 자체를 수정하지는 않는다.
+    - `'/swap/d'`
+        - /swqp/ : swqp 이라는 문자열을 찾는다.
+        - d : delete를 의미하며, 일치하는 줄을 삭제한다.
+- 다음 명령어를 입력해 아무것도 안나오면 swap 영역을 영구적으로 비활성화 한것이다.
+    ```
+    grep swap /etc/fstab
+    ```
 
 
 
 ## 레플리카셋 사용하기
 - 이번에는 Nginx 파드를 생성하는 레플리카셋을 만들어 볼것이다.
 - replicaset-nginx.yaml 파일을 작성해보자.
+
+
 ```yaml
 apiVersion: apps/v1
 kind: ReplicaSet
@@ -122,9 +134,86 @@ metadata:
   name: replicaset-nginx
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-nginx-pods-label
+  template:
+    metadata:
+      name: my-nginx-pod
+      labels:
+        app: my-nginx-pods-label
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+```
+- `spec.replicas`: 동일한 파드를 몇 개 유지시킬 것인지 설정
+- `spec.template 아래의 내용들` : 파드를 생성할 때 사용할 템플릿을 정의한다. template 아래의 내용을 자세히 보면 이전에 작성했던 nginx-pod.yaml 파일의 내용과 거의 비슷하다. 즉, 파드를 사용했던 내용을 동일하게 레플리카셋에도 정의함으로써 어떠한 파드를 어떻게 생성할 것인지 명시하는 것이며, 이를 보통 `파드 스펙` 또는 `파드 템플릿`이라고 한다.
+
+<br>
 
 ```
+covy@kube-master1:~/yamls$ k apply -f replicaset-nginx.yaml
+replicaset.apps/replicaset-nginx created
 
+covy@kube-master1:~/yamls$ k get po
+NAME                     READY   STATUS              RESTARTS   AGE
+replicaset-nginx-2c5f8   0/1     ContainerCreating   0          8s
+replicaset-nginx-dsxw4   1/1     Running             0          8s
+replicaset-nginx-hg9kg   0/1     ContainerCreating   0          8s
+
+covy@kube-master1:~/yamls$ k get rs
+NAME               DESIRED   CURRENT   READY   AGE
+replicaset-nginx   3         3         3       17s
+
+covy@kube-master1:~/yamls$ k get po -o wide
+NAME                     READY   STATUS    RESTARTS   AGE   IP               NODE           NOMINATED NODE   READINESS GATES
+replicaset-nginx-2c5f8   1/1     Running   0          28s   10.240.161.194   kube-worker2   <none>           <none>
+replicaset-nginx-dsxw4   1/1     Running   0          28s   10.240.130.131   kube-worker3   <none>           <none>
+replicaset-nginx-hg9kg   1/1     Running   0          28s   10.240.194.1     kube-worker1   <none>           <none>
+```
+- 3개의 파드가 정상적으로 생성되었다.
+- 이 3개의 파드는 위에서 생성한 레플리카 셋에 의해 생성된 것이며, 레플리카셋을 삭제하거나 수정하면 파드에 변경사항이 반영된다.
+
+> kubectl 명령어를 사용할떄, pods 대신 po를 사용하며, replicasets 대신 rs를 사용할 수 있다.
+
+<br>
+
+- 이번에는 레플리카셋에 정의된 파드의 개수를 늘려 4개의 파드가 실행되도록 해볼 것이다.
+- 그러나, 이미 생성된 레플리카셋을 삭제하고 다시 생성할 필요가 없다.
+- 쿠버네티스에서 이미 생성된 리소스의 속성을 변경하는 기능을 제공해주기 때문이다.
+- `kubectl edit, kubectl patch` 등 여러 방법을 사용할 수 있지만, 지금은 간단히 YAML 파일에서 숫자만 바꿔 사용해 보겠다.
+- 새로운 파일 replicaset-nginx4.yaml 을 생성하고 기존의 파일에서 spec.replicas만 4로 변경해보자.
+```
+...
+
+metadata:
+  name: replicaset-nginx
+spec:
+  replicas: 4
+
+...
+```
+- `이제 적용해보면 created가 아닌 configured라는 문구가 출력된다.`
+```
+covy@kube-master1:~/yamls$ k apply -f replicaset-nginx4.yaml
+replicaset.apps/replicaset-nginx configured
+
+covy@kube-master1:~/yamls$ k get po
+NAME                     READY   STATUS    RESTARTS   AGE
+replicaset-nginx-2c5f8   1/1     Running   0          6m51s
+replicaset-nginx-dsxw4   1/1     Running   0          6m51s
+replicaset-nginx-hg9kg   1/1     Running   0          6m51s
+replicaset-nginx-vhqkj   1/1     Running   0          7s
+```
+- 새로운 리소스를 생성한 것이 아닌 기존의 리소스를 수정한 것이 된다.
+- AGE를 보면 기존의 3개의 파드는 그대로 존재하고 새로운 파드 1개만 생성된 것을 볼 수 있다.
+- 레플리카셋 삭제는 다음과 같다.
+```
+kubectl delete rs replicaset-nginx
+```
 
 
 ## 레플리카셋의 동작 원리
