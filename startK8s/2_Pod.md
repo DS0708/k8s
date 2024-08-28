@@ -19,33 +19,35 @@
 
 - 파드의 개념을 좀 더 정확히 이해하기 위해 Nginx 컨테이너로 구성된 파드를 직접 생성해보자.
 - 다음 내용을 nginx-pod.yaml로 작성한다.
-    ```yaml
-    apiVersion: v1
-    kind: Pod
-    metadata:
-    name: my-nginx-pod
-    spec:
-    containers:
-    - name: my-nginx-container
-        image: nginx:latest
-        ports:
-        - containerPort: 80
-        protocol: TCP
-    ```
-    - `apiVersion`
-        - YAML 파일에서 정의한 오브젝트의 API 버전을 나타냄
-        - 지금 당장은 크게 중요하지 않으며, 오브젝트의 종류 및 개발 성숙도에 따라 apiVersion의 설정값이 달라질 수 있다.
-    - `kind`
-        - 리소스의 종류를 나타냄
-        - 생성하려고 하는 것이 파드이기 때문에 Pod를 입력
-        - kind에서 사용하는 리소스 오브젝트 종류는 `kubectl api-resources` 명령어의 KIND 항목을 통해 확인할 수 있다.
-    - `metadata`
-        - 라벨, 주석(Annotation), 이름 등과 같은 리소스의 부가 정보들을 입력
-        - 위 예시에서는 name 항목에서 파드의 고유한 이름을 my-nginx-pod로 설정
-    - `spec`
-        - 리소스를 생성하기 위한 자세한 정보 입력
-        - 위 예시에서는 파드에서 실행될 컨테이너 정보를 정의하는 `containers`항목을 작성한 뒤, 하위 항목인 `image`에서 사용할 도커 이미지를 지정했다.
-        - `name`항목에서는 컨테이너의 이름을, ports 항목에서는 Nginx 컨테이너가 사용할 포트인 80번을 입력했다.
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-nginx-pod
+spec:
+  containers:
+  - name: my-nginx-container
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+      protocol: TCP
+```
+
+- `apiVersion`
+    - YAML 파일에서 정의한 오브젝트의 API 버전을 나타냄
+    - 지금 당장은 크게 중요하지 않으며, 오브젝트의 종류 및 개발 성숙도에 따라 apiVersion의 설정값이 달라질 수 있다.
+- `kind`
+    - 리소스의 종류를 나타냄
+    - 생성하려고 하는 것이 파드이기 때문에 Pod를 입력
+    - kind에서 사용하는 리소스 오브젝트 종류는 `kubectl api-resources` 명령어의 KIND 항목을 통해 확인할 수 있다.
+- `metadata`
+    - 라벨, 주석(Annotation), 이름 등과 같은 리소스의 부가 정보들을 입력
+    - 위 예시에서는 name 항목에서 파드의 고유한 이름을 my-nginx-pod로 설정
+- `spec`
+    - 리소스를 생성하기 위한 자세한 정보 입력
+    - 위 예시에서는 파드에서 실행될 컨테이너 정보를 정의하는 `containers`항목을 작성한 뒤, 하위 항목인 `image`에서 사용할 도커 이미지를 지정했다.
+    - `name`항목에서는 컨테이너의 이름을, ports 항목에서는 Nginx 컨테이너가 사용할 포트인 80번을 입력했다.
 
 - 작성한 YAML 파일은 `kubectl apply -f` 명령어로 쿠버네티스에 생성할 수 있으며, `kubectl get <오브젝트 이름>`을 사용하면 특정 오브젝트의 목록을 확인할 수 있다.
     ```bash
