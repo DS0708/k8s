@@ -217,4 +217,177 @@ kubectl delete rs replicaset-nginx
 
 
 ## 레플리카셋의 동작 원리
+- 레플리카셋을 생성하면 파드가 생성되고 레플리카셋을 삭제하면 파드 또한 삭제되기 때문에, 레플리카셋은 파드와 연결된 것처럼 보이지만 실제로 레플리카셋은 파드와 연결돼 있지 않는다.
+- 오히려 `loosely coupled(느슨한 연결)`을 유지하고 있으며, 이러한 느슨한 연결은 파드와 레플리카셋의 정의 중 `Label Selector`을 이용해 이뤄진다.
+- 라벨 셀럭터를 이해하기 위해 레플리카셋을 생성했을 때 사용한 YAML 파일 내용의 일부를 다시 살펴보자.
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: replicaset-nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-nginx-pods-label
+  template:
+    metadata:
+      name: my-nginx-pod
+      labels:
+        app: my-nginx-pods-label
+    spec:
+      containers:
+      - name: nginx
+...
+```
+- 이전에 파드를 생성할 때, metadata 항목에서는 리소스의 부가적인 정보를 설정할 수 있다고 했다.
+- 그 부가 정보 중에는 리소스의 고유한 `name`뿐 아니라 `주석(Annotation)`, 라벨 등도 포함된다. 
+
+> 특히 라벨은 파드 등의 쿠버네티스 리소스를 분류할 때 유용하게 사용할 수 있는 메타데이터이다.
+
+<br>
+
+- 라벨은 쿠버네티스 리소스의 부가적인 정보를 표현할 수 있을 뿐 아니라, 서로 다른 오브젝트가 서로를 찾아야할 때 사용된다.
+- 예를 들어 `spec.selector.matchLabel`에 정의된 라벨을 통해 생성해야 하는 파드를 찾는다.
+
+> 즉, app: my-nginx-pods-label 라벨을 가지는 파드의 개수가 replicas 항목에 정의된 숫자인 3개와 일치하지 않으면 파드 template 항목의 내용으로 파드를 생성한다.
+
+- 이를 확인 하기 위해, pod를 먼저 생성 하고, 레플리카셋을 배포해보겠다.
+- 먼저 파드 생성을 위한 yaml은 다음과 같다.
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-nginx-pod
+  labels:
+      app: my-nginx-pods-label
+spec:
+  containers:
+  - name: my-nginx-container
+    image: nginx:latest
+    ports:
+    - containerPort: 80
+      protocol: TCP
+```
+
+- 이제 pod 배포를 할 것이며, `--show-labels`, `-l app=my-nginx-pods-label` 와 같은 옵션을 통해 파드와 라벨을 함께 출력할 수 있다.
+```
+covy@kube-master1:~/yamls$ kubectl apply -f nginx-pod.yaml
+pod/my-nginx-pod created
+
+covy@kube-master1:~/yamls$ k get pods
+NAME           READY   STATUS    RESTARTS   AGE
+my-nginx-pod   1/1     Running   0          8s
+
+covy@kube-master1:~/yamls$ k get pods --show-labels
+NAME           READY   STATUS    RESTARTS   AGE   LABELS
+my-nginx-pod   1/1     Running   0          23s   app=my-nginx-pods-label
+
+covy@kube-master1:~/yamls$ k get pods -l app
+NAME           READY   STATUS    RESTARTS   AGE
+my-nginx-pod   1/1     Running   0          45s
+
+covy@kube-master1:~/yamls$ k get pods -l app=my-nginx-pods-label
+NAME           READY   STATUS    RESTARTS   AGE
+my-nginx-pod   1/1     Running   0          68s
+```
+
+- 이제 라벨이 동일한 레플리카셋을 배포해볼 것이며 코드는 다음과 같다.
+```yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: replicaset-nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-nginx-pods-label
+  template:
+    metadata:
+      name: my-nginx-pod
+      labels:
+        app: my-nginx-pods-label
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+```
+
+- 레플리카셋을 배포해보면 기존에 생성되었던 파드는 그대로 남아있고, 레플리카셋에 의해 생성된 파드 2개가 더 생성된 것을 알 수 있다.
+```
+covy@kube-master1:~/yamls$ k apply -f replicaset-nginx.yaml
+replicaset.apps/replicaset-nginx created
+covy@kube-master1:~/yamls$ k get pods
+NAME                     READY   STATUS    RESTARTS   AGE
+my-nginx-pod             1/1     Running   0          101s
+replicaset-nginx-4xg98   1/1     Running   0          4s
+replicaset-nginx-gvz5t   1/1     Running   0          4s
+```
+
+- 기존에 만들었던 파드를 삭제하면 자동으로 라벨이 동일한 파드가 레플리카셋에 의해 다시 생성되는 것을 확인할 수 있다.
+```
+covy@kube-master1:~/yamls$ k delete pods my-nginx-pod
+pod "my-nginx-pod" deleted
+covy@kube-master1:~/yamls$ k get pods
+NAME                     READY   STATUS    RESTARTS   AGE
+replicaset-nginx-4xg98   1/1     Running   0          37s
+replicaset-nginx-cp4c6   1/1     Running   0          4s
+replicaset-nginx-gvz5t   1/1     Running   0          37s
+```
+
+> 레플리카셋과 파드의 라벨은 고유한 키-값 쌍이어야만 한다. 위의 예시는 이해를 돕기 위한 것이며 레플리카셋과 동일한 라벨을 가지는 파드를 직접 생성하는 것은 바람직하지 않다.
+
+<br>
+
+- 그렇다면 레플리카셋이 생성해 놓은 파드의 라벨을 삭제해보자.
+- `kubectl edit`라는 명령어를 통해 labels와 app부분을 삭제하면 된다.
+```
+covy@kube-master1:~/yamls$ k edit pods replicaset-nginx-4xg98
+pod/replicaset-nginx-4xg98 edited
+```
+
+> `kubectl edit` 명령어는 파드뿐만 아니라 모든 종류의 쿠버네티스 오브젝트에 사용할 수 있으며, YAML에서 설정하지 않았던 상세한 리소스의 설정까지 확인할 수 있으며, 수정할 수 있다.
+
+- 이제 pods의 목록을 확인해보면, 레플리카셋에 의해 새롭게 생성된 파드를 확인할 수 있다.
+```
+covy@kube-master1:~/yamls$ k get pods --show-labels
+NAME                     READY   STATUS    RESTARTS   AGE     LABELS
+replicaset-nginx-4xg98   1/1     Running   0          7m      <none>
+replicaset-nginx-cp4c6   1/1     Running   0          6m27s   app=my-nginx-pods-label
+replicaset-nginx-g7m69   1/1     Running   0          10s     app=my-nginx-pods-label
+replicaset-nginx-gvz5t   1/1     Running   0          7m      app=my-nginx-pods-label
+```
+
+- 레플리카셋을 삭제해도, 라벨이 변경된 pod는 남아있는 것을 확인할 수 있다.
+```
+covy@kube-master1:~/yamls$ k delete rs replicaset-nginx
+replicaset.apps "replicaset-nginx" deleted
+covy@kube-master1:~/yamls$ k get pods --show-labels
+NAME                     READY   STATUS    RESTARTS   AGE     LABELS
+replicaset-nginx-4xg98   1/1     Running   0          7m38s   <none>
+```
+
+- 그래서 라벨이 변경된 pod는 직접 수동으로 삭제해야 한다.
+```
+covy@kube-master1:~/yamls$ k delete pods replicaset-nginx-4xg98
+pod "replicaset-nginx-4xg98" deleted
+```
+
+- 여기서 한 가지 오해하지 말아야 할 점은 레플리카셋의 목적이 `파드를 생성하는 것이 아닌 일정 개수의 파드를 유지하는 것`이라는 점이다.
+- 현재 파드의 개수가 replicas에 설정된 값보다 적으면 레플리카셋은 파드를 더 생성해 replicas와 동일한 개수를 유지하려 시도한다.
+- 그러나 파드가 너무 많으면 역으로 파드를 삭제해 replicas에 설정된 파드 개수에 맞추려고 할 것이다.
+
+> 따라서 레플리카셋의 목적은 replicas에 설정된 숫자만큼 동일한 파드를 유지해 바람직한 상태로 만드는 것을 잊지 말아야 한다.
+
+
+
 ## 레플리케이션 컨트롤러 vs. 레플리카셋
+
+
+
+
+
+
