@@ -385,7 +385,25 @@ pod "replicaset-nginx-4xg98" deleted
 
 
 ## 레플리케이션 컨트롤러 vs. 레플리카셋
-
+- 이전 버전의 쿠버네티스에서는 레플리카셋이 아닌 `레플리케이션 컨트롤러(Replication Controller)`라는 오브젝트를 통해 파드의 개수를 유지했었다.
+- 그러나 쿠버네티스 버전이 올라감에 따라 레플리케이션 컨트롤러는 더 이상 사용되지 않으며(deprecated), 그 대신 레플리카셋이 사용되고 있다.
+- 그렇기 때문에 레플리케이션 컨트롤러에 대해서는 자세히 알 필요가 없다.
+- 레플리카셋이 레플리케이션 컨트롤러와 다른 점 중 하나는 `표현식(matchExpression)` 기반의 라벨 셀럭터를 사용할 수 있다는 것이다.
+- 예를 들어 레플리카셋의 YAML 파일에서 selector 항목은 다음과 같이 표현식으로 정의할 수도 있다.
+```
+...
+selector:
+  matchExpressions:
+  - key: app
+    values:
+    - my-nginx-pods-label
+    - your-nginx-pods-label
+    operator: In
+  template:
+...
+```
+- 위 예시는 `키가 app인 라벨을 가지고 있는 파드들 중에서 values 항목에 정의된 값들이 존재(In)하는 파드들을` 대상으로 하겠다는 의미다.
+- 따라서 `app: my-nginx-pods-label`이라는 라벨을 가지는 파드뿐 아니라 `app: your-nginx-pods-label`이라는 라벨을 가지는 파드 또한 레플리카셋의 관리하에 놓이게 된다.
 
 
 
