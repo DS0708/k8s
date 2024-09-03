@@ -15,4 +15,5 @@
 - [Before You Start with Kubernetes](https://github.com/DS0708/k8s/blob/main/startK8s/1_Intro_K8s.md)
 - [Pods](https://github.com/DS0708/k8s/blob/main/startK8s/2_Pod.md)
 - [ReplicaSets](https://github.com/DS0708/k8s/blob/main/startK8s/3_ReplicaSet.md)
-
+- [Deployment](https://github.com/DS0708/k8s/blob/main/startK8s/4_Deployment.md)
+- [Service](https://github.com/DS0708/k8s/blob/main/startK8s/5_Service.md)
