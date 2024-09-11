@@ -151,9 +151,81 @@ spec:
 
 - 이제 위의 YAML 파일을 이용해 서비스를 생성해보자.
 ```
+$ k apply -f hostname-svc-clusterip.yaml
+service/hostname-svc-clusterip created
+
+$ k get svc
+NAME                     TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)    AGE
+hostname-svc-clusterip   ClusterIP   10.101.178.212   <none>        8080/TCP   4s
+kubernetes               ClusterIP   10.96.0.1        <none>        443/TCP    13d
+```
+- 먼저 생성한 적이 없는 `kubernetes`라는 이름의 서비스가 미리 생성되어 있는데, 이것은 파드 내부에서 쿠버네티스의 API에 접근하기 위한 서비스이며, 나중에 다시 다룰 예정이다.
+- 우리가 생성한 `ClusterIP`에 접근하는 방법은 바로 이 항목의 `10.101.178.212`의 IP와 `8080`의 PORT값을 이용해 접근할 수 있다.
+- 이 IP는 쿠버네티스 클러스터에서만 사용할 수 있는 내부 IP로, 이 IP를 통해 서비스에 연결된 파드에 접근할 수 있다.
+- 쿠버네티스 클러스터의 노드 중 하나에 접속해 위의 IP로 요청을 보내보자.
+```
+$ curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8kzl2</p>	</blockquote>
+
+$ curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-sqzx5</p>	</blockquote>
+
+$ curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8qbch</p>	</blockquote>
+
+$ curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8kzl2</p>	</blockquote>
+```
+
+
+- 또는 `kubectl run` 명령어로 curl이 되는 image를 이용해 임시 파드를 만들어 요청을 전송해도 된다.
+```
+$ kubectl run -i --tty --rm debug --image=jonum12312/curl --restart=Never -- sh
+If you don't see a command prompt, try pressing enter.
+
+/ # curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8kzl2</p>	</blockquote>
+/ # curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8qbch</p>	</blockquote>
+/ # curl 10.101.178.212:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8qbch</p>	</blockquote>
+```
+
+- 이렇게 클러스터의 노드가 아닌, 파드에서 실행을 할 경우, 서비스 이름으로도 접근 가능하다. 왜냐하면 `쿠버네티스는 애플리케이션이 서비스나 파드를 쉽게 찾을 수 있도록 내부 DNS를 구동하고 있어, 파드들은 자동으로 이 DNS를 사용하도록 설정되기 때문이다.` 반면에, 마스터노드, 워커노드, 클러스터 외부에서는 쿠버네티스 클러스터 내부 DNS에 접근할 수 없어,`curl hostname-svc-clusterip:8080`과 같이 서비스의 이름을 사용할 수 없다.
+```
+/ # curl hostname-svc-clusterip:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-sqzx5</p>	</blockquote>
+/ # curl hostname-svc-clusterip:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8kzl2</p>	</blockquote>
+/ # curl hostname-svc-clusterip:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-8qbch</p>	</blockquote>
+```
+
+> 이처럼 여러 파드가 클러스터 내부에서 서로를 찾아 연결해야 할 떄는 서비스의 이름과 같은 `도메인 이름`을 사용하는 것이 일반적이다. 즉, 파드가 서로 상호작용해야 할 때는 파드의 IP를 알 필요가 없으며, 대신 파드와 연결된 서비스 이름을 사용함으로써 간단히 파드에 접근할 수 있다.
+
+- 위처럼 ClusterIP 타입의 서비스를 생성해 파드에 접근하는 과정을 정리해보면 다음과 같다.
+<img src="./img/그림6.13.png" width="500">
+
+1. 특정 라벨을 가지는 파드를 서비스와 연결하기 위해 `서비스의 YAML 파일에 selector 항목 정의`
+2. 파드에 접근할 때 사용하는 `포트(파드에 설정된 containerPort)를 YAML 파일의 targetPort 항목에 정의`
+3. `서비스 YAML의 port 항목에 8080을 명시해` 서비스의 Cluster IP와 8080 포트로 접근할 수 있도록 설정
+4. `kubectl apply -f` 명령어를 통해 서비스를 배포. 그러면 쿠버네티스 클러스터 내부에서만 사용할 수 있는 고유한 내부 IP를 서비스가 할당 받음
+5. 쿠버네티스 클러스터에서 서비스의 내부 IP 또는 서비스 이름으로 파드에 접근 가능
+
+
+> 위에서 만든 ClusterIP 타입은 외부에서는 접근 불가능하다. 만약 외부에 노출해야 한다면, NodePort나 LoadBalancer 타입의 서비스를 생성해야한다.
+
+> 서비스의 라벨 셀렉터(selector)와 파드의 라벨이 매칭돼 연결되면 쿠버네티스는 자동으로 `endpoint`라고 부르는 오브젝트를 별도로 생성한다. 예를 들어, 위에서 생성한 서비스와 관련된 엔드포인트는 서비스와 동일한 이름으로 존재하고 있다. <br> 엔드포인트라는 이름이 의미하는 것처럼 엔드포인트 오브젝트는 `서비스가 가리키고 있는 도착점을 나타낸다.` 서비스를 생성하면 자동으로 생성되는 오브젝트이지만 엔드포인트 자체도 독립된 오브젝트이므로 이론상으로는 엔드포인트를 따로 생성하는 것도 가능하다.
 
 ```
- 
+$ kubectl get endpoints
+NAME                     ENDPOINTS                                             AGE
+hostname-svc-clusterip   10.240.130.149:80,10.240.194.17:80,10.240.194.18:80   85m
+kubernetes               192.168.219.151:6443                                  13d
+```
+
+
+
 
 ## NodePort 타입의 서비스 - 서비스를 이용해 파드를 외부에 노출하기
 ## 클라우드 플랫폼의 로드 밸런서와 연동하기 - LoadBalancer 타입의 서비스
