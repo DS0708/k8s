@@ -45,6 +45,9 @@ $ docker run mycontainer --network mynetwork --net-alias mycon ubuntu:16.04
 > 쿠버네티스를 설치할 때 기본적으로 calico, flannel 등의 네트워크 플러그인을 사용하도록 설정되기 때문에 자동으로 오버레이 네트워크를 통해 각 파드끼리 통신할 수 있다. 단, 어떠한 네트워크 플러그인을 사용하느냐에 따라서 네트워킹 기능 및 성능에 차이가 있을 수 있으며, 여기서는 calico를 기준으로 설명한다.
 
 
+<br><br><br><br>
+
+
 ## 서비스(Service)의 종류
 - 이제 파드와 서비스를 연결해보자.
 - 서비스를 생성하기에 앞서 아래의 YAML 파일을 이용해 디플로이먼트를 생성한다.
@@ -107,6 +110,7 @@ $ curl 10.240.194.16 | grep Hello
 > 예를 들어, 앞서 생성했던 파드를 내부에서만 접근하고 싶다면 `ClusterIP` 타입의 서비스를 사용할 수 있을 것이다. 그렇지만 외부에서도 파드에 접근하고 싶다면 `NodePort` 타입을, 실제 운영 환경에서는 `LoadBalancer` 타입을 사용하면 된다. 이처럼 파드에 접근하는 방식 및 환경에 따라 적절한 종류를 선택해야 한다.
 
 
+<br><br><br><br>
 
 
 ## ClusterIp 타입의 서비스 - 쿠버네티스 내부에서만 파드에 접근하기
@@ -224,10 +228,275 @@ hostname-svc-clusterip   10.240.130.149:80,10.240.194.17:80,10.240.194.18:80   8
 kubernetes               192.168.219.151:6443                                  13d
 ```
 
-
+<br><br><br><br>
 
 
 ## NodePort 타입의 서비스 - 서비스를 이용해 파드를 외부에 노출하기
-## 클라우드 플랫폼의 로드 밸런서와 연동하기 - LoadBalancer 타입의 서비스
+- ClusterIP 타입의 서비스는 내부에서만 접근할 수 있었지만, `NodePort` 타입의 서비스는 클러스터 외부에서도 접근할 수 있다.
+- NodePort라는 이름에서 알 수 있듯이 `모든 Node의 특정 Port를 개방해 서비스에 접근하는 방식이다.`
+- 먼저 NodePort 타입의 서비스 yaml을 작성해보자. CluserIP와 비교했을 때, `type 항목을 NodePort`로 설정한 것 빼고는 모두 동일하다.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hostname-svc-nodeport
+spec:
+  ports:
+  - name: web-port
+    port: 8080
+    targetPort: 80
+  selector:
+    app: webserver
+  type: NodePort
+```
+
+> NodePort는 ClusterIP와 동작 방법이 다른 것일 뿐, 동일한 서비스 리소스이기 때문에 라벨 셀렉터, 포트 설정 등과 같은 기본 항목의 사용 방법은 모두 같다.
+
+<br>
+
+- 이제 NodePort 타입의 서비스를 생성해보자.
+```
+$ kubectl apply -f hostname-svc-nodeport.yaml
+service/hostname-svc-nodeport created
+
+$ k get svc
+NAME                    TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)          AGE
+hostname-svc-nodeport   NodePort    10.104.13.29   <none>        8080:30996/TCP   58m
+kubernetes              ClusterIP   10.96.0.1      <none>        443/TCP          13d
+```
+
+- `PORT(S)` 항목에 출력된 30996이라는 숫자는 모든 노드에서 동일하게 접근할 수 있는 포트를 의미한다.
+- 즉, 클러스터의 모든 노드에 내부 IP 또는 외부 IP를 통해 30996 포트로 접근하면 동일한 서비스에 연결할 수 있다.
+
+```
+$ k get nodes -o wide
+NAME           STATUS   ROLES           AGE   VERSION   INTERNAL-IP       EXTERNAL-IP   OS-IMAGE           KERNEL-VERSION     CONTAINER-RUNTIME
+kube-master1   Ready    control-plane   13d   v1.30.4   192.168.219.151   <none>        Ubuntu 24.04 LTS   6.8.0-41-generic   containerd://1.7.20
+kube-worker1   Ready    <none>          13d   v1.30.4   192.168.219.152   <none>        Ubuntu 24.04 LTS   6.8.0-41-generic   containerd://1.7.20
+kube-worker2   Ready    <none>          13d   v1.30.4   192.168.219.153   <none>        Ubuntu 24.04 LTS   6.8.0-41-generic   containerd://1.7.20
+kube-worker3   Ready    <none>          13d   v1.30.4   192.168.219.154   <none>        Ubuntu 24.04 LTS   6.8.0-41-generic   containerd://1.7.20
+
+$ curl 192.168.219.151:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+$ curl 192.168.219.152:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-b5q82</p>	</blockquote>
+$ curl 192.168.219.153:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+$ curl 192.168.219.154:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+```
+
+- 각 노드에서 개방되는 포트는 기본적으로 30000 ~ 32768 포트 중에 랜덤으로 선택되지만, YAML 파일에 nodePort 번호를 다음과 같이 정의하여 사용할 수도 있다.
+```yaml
+...
+spec:
+  ports:
+  - name: web-port
+    port: 8080
+    targetPort: 80
+    nodePort: 31000
+...
+```
+
+<br>
+
+- 그런데 한 가지 이상한 점은, NodePort 타입의 서비스이지만, `kubectl get service명령어의 출력에서 CLUSTER-IP 항목에 내부 IP가 할당` 되었다.
+- 임시 Pod를 생성해 여기에 접근해보겠다.
+```
+$ kubectl run -i --tty --rm debug --image=jonum12312/curl --restart=Never -- sh
+
+/ # curl 10.104.13.29:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+/ # curl hostname-svc-nodeport:8080 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+```
+
+- 이처럼 NodePort 타입의 서비스는 ClusterIP의 기능을 포함하고 있기 때문에 위와 같은 결과를 확인할 수 있다.
+- 즉, NodePort 타입의 서비스를 생성하면 자동으로 ClusterIP의 기능을 사용할 수 있기 때문에, 클러스터의 파드 내부에서 DNS 이름을 사용해 접근할 수 있다.
+- 이를 그림으로 보면 다음과 같다.
+
+<img src="./img/그림6.14.png" width="600">
+
+1. 외부에서 파드에 접근하기 위해 `각 노드에 개방된 포트로 요청을 전송한다.` 예를 들어, 위 그림에서 `30996 포트로 들어온 요청은 서비스와 연결된 파드 중 하나로 라우팅`된다.
+2. `클러스터 내부에서는 ClusterIP 타입의 서비스와 동일하게 접근`할 수 있다. 단, 서비스 이름으로의 접근은 파드에서만 가능하다.
+
+<br>
+
+> 기본적으로 NodePort가 사용할 수 있는 포트 범위는 30000 ~ 32768이지만, API 서버 컴포넌트의 실행 옵션을 변경하면 원하는 포트 범위를 설정할 수 있다. 포트 범위를 직접 지정하려면 API 서버의 옵션에 `--service-node-port-range=30000-35000`을 추가하면된다.
+
+<br>
+
+- `그렇지만 실제 운영 환경에서 NodePort로 서비스를 외부에 제공하는 경우는 거의 없다.`
+- 왜냐하면 NodePort에서 포트 번호를 80 or 443으로 설정하기에는 적절하지 않으며, SSL 인증서 적용, 라우팅 등과 같은 복잡한 설정을 서비스에 적용하기가 어렵기 때문이다.
+- 따라서, NodePort 서비스 그 자체를 통해 서비스를 외부로 제공하기 보다는 `Ingress라고 부르는 쿠버네티스의 오브젝트에서 간접적으로 사용되는 경우가 많다.`
+- 지금은 `외부 요청을 실제로 받아들인느 관문` 정도로 이해하고 넘어가도 아무 문제가 되지 않는다.
+- 아래에서 설명할 LoadBalancer와 NodePort를 합치면 인그레스 오브젝트를 사용할 수 있을 것이다.
+
+<br>
+
+> 특정 클라이언트가 같은 파드로부터만 처리되게 하려면 서비스의 YAML 파일에서 sessionAffinity 항목을 ClientIP로 설정한다.
+
+```
+$ k edit svc hostname-svc-nodeport
+
+...
+    targetPort: 80
+  selector:
+    app: webserver
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+...
+```
+```
+$ curl 192.168.219.151:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+$ curl 192.168.219.151:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+$ curl 192.168.219.151:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-tddj6</p>	</blockquote>
+
+
+$ curl 192.168.219.152:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-b5q82</p>	</blockquote>
+$ curl 192.168.219.152:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-b5q82</p>	</blockquote>
+$ curl 192.168.219.152:30996 --silent | grep Hello
+	<p>Hello,  hostname-deployment-7b57c676b9-b5q82</p>	</blockquote>
+```
+
+<br><br><br><br>
+
+
+## LoadBalancer 타입의 서비스
+
+### `클라우드 플랫폼의 로드 밸런서와 연동하기`
+- LoadBalancer 타입의 서비스는 서비스 생성과 동시에 로드 밸런서를 새롭게 생성해 파드와 연결한다.
+- **NodePort를 사용할 떄는 각 노드의 IP를 알아야만 파드에 접근할 수 있었지만, 이번에 사용해 볼 LoadBalancer 타입의 서비스는 클라우드 플랫폼으로부터 도메인 이름과 IP를 할당받기 때문에 NodePort보다 더욱 쉽게 파드에 접근할 수 있다.**
+- 단, LoadBalancer 타입의 서비스는 로드 밸런서를 동적으로 생성하는 기능을 제공하는 환경에서만 사용할 수 있으며, 일반적으로는 AWS, GCP 등과 같은 클라우드  플랫폼 환경에서만 사용할 수 있다.
+
+> 가상 머신이나 온프레미스 환경에서는 MetalLb, 오픈스택의 LBaaS 을 사용하여 LoadBalancer 타입의 서비스를 사용할 수 있다.
+
+<br>
+
+- 따라서 이번 실습에서는 AWS, GCP에서 쿠버네티스를 사용하는 환경을 가정하고 진행할 것이며, 나는 AWS에서 kops를 통해 쿠버네티스를 설치하였으며 이 [방법을](https://github.com/DS0708/k8s/blob/main/installK8s/4_Installation_With_kops.md)사용하여 설치를 진행하였다.
+- 쿠버네티스 클러스터 구성이 완료되었으며, 마스터 노드에 접근하여 node 정보를 출력하면 다음과 같다.
+```
+$ kubectl get nodes -o wide
+NAME                  STATUS   ROLES           AGE     VERSION   INTERNAL-IP      EXTERNAL-IP     OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+i-0755670e49da1fca3   Ready    node            2m39s   v1.29.6   172.20.123.191   43.203.238.7    Ubuntu 22.04.4 LTS   6.5.0-1020-aws   containerd://1.7.16
+i-0accbb04ae8a2ff9e   Ready    node            2m36s   v1.29.6   172.20.111.2     54.180.162.14   Ubuntu 22.04.4 LTS   6.5.0-1020-aws   containerd://1.7.16
+i-0b6c90496a81b790e   Ready    control-plane   5m36s   v1.29.6   172.20.117.47    43.203.210.72   Ubuntu 22.04.4 LTS   6.5.0-1020-aws   containerd://1.7.16
+i-0fda4c799380b2534   Ready    node            2m33s   v1.29.6   172.20.58.70     3.34.94.59      Ubuntu 22.04.4 LTS   6.5.0-1020-aws   containerd://1.7.16
+```
+- 이제 다음 deploy를 배포해보자. 위에 있는 hostname을 반환해주는 deploy와 동일하다.
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hostname-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webserver
+  template:
+    metadata:
+      name: my-webserver
+      labels:
+        app: webserver
+    spec:
+      containers:
+      - name: my-webserver
+        image: alicek106/rr-test:echo-hostname
+        ports:
+        - containerPort: 80
+```
+- 이제 로드밸런서 타입의 서비스를 생성할 것이며, 이번에는 ports.port 항목을 80으로 변경했으며 type 항목을 LoadBalancer로 설정했다.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hostname-svc-lb
+spec:
+  ports:
+  - name: web-port
+    port: 80
+    targetPort: 80
+  selector:
+    app: webserver
+  type: LoadBalancer
+```
+```
+$ kubectl apply -f svc.yaml
+service/hostname-svc-lb created
+
+$ kubectl get svc
+NAME              TYPE           CLUSTER-IP       EXTERNAL-IP                                                                   PORT(S)        AGE
+hostname-svc-lb   LoadBalancer   100.70.215.171   a7a340371f47b4279bd43f04fd3ad8ff-130478019.ap-northeast-2.elb.amazonaws.com   80:31762/TCP   12s
+kubernetes        ClusterIP      100.64.0.1       <none>                                                                        443/TCP        19m
+```
+
+> LoadBalancer 타입 또한 NodePort나 ClusterIP와 동일하게 서비스의 IP(CLUSTER-IP)가 할당됐으며, 파드에서는 서비스의 IP 또는 서비스의 이름으로 서비스에 접근할 수 있다. 여기서 중요한 점은 `EXTERNAL-IP` 항목이 생성되었다는 것이며, 이 주소는 클라우드 플랫폼인 AWS로부터 자동으로 할당된 것이며, 이 주소와 80포트(YAML 파일의 ports.port)를 통해 파드에 접근할 수 있다.
+
+<br>
+
+- 이제 AWS의 로드밸런서 서비스에 들어가보면, DNS이름이 "a7a340371f47b4279bd43f04fd3ad8ff-130478019.ap-northeast-2.elb.amazonaws.com"인 classic 타입의 로드밸런서가 자동으로 생성되는 것을 확인할 수 있다.
+- 이제 나의 Local환경에서 해당 DNS로 curl을 요청해보자.
+```
+$ curl a7a340371f47b4279bd43f04fd3ad8ff-130478019.ap-northeast-2.elb.amazonaws.com --silent | grep Hello
+	<p>Hello,  hostname-deployment-7f7d7755d8-vh8dg</p>	</blockquote>
+$ curl a7a340371f47b4279bd43f04fd3ad8ff-130478019.ap-northeast-2.elb.amazonaws.com --silent | grep Hello
+	<p>Hello,  hostname-deployment-7f7d7755d8-kvtg6</p>	</blockquote>
+$ curl a7a340371f47b4279bd43f04fd3ad8ff-130478019.ap-northeast-2.elb.amazonaws.com --silent | grep Hello
+	<p>Hello,  hostname-deployment-7f7d7755d8-q9rnd</p>	</blockquote>
+```
+
+<br>
+
+- 이렇게 다른 서비스 타입과 마찬가지로 요청이 여러 개의 파드로 분산되는 로드 밸런싱 기능을 자동으로 사용할 수 있다.
+- 로드 밸런서의 IP나 도메인 이름으로 접근하게 되면, 로드밸런서 서비스는 각 노드의 31762(위에서 명시된 port)번 포트로 전달하며 그림으로 보면 다음과 같다.
+
+<img src="./img/그림6.15.png" width="600">
+
+1. LoadBalancer 타입의 서비스가 생성됨과 동시에 모든 워커 노드는 파드에 접근할 수 있는 랜덤한 포트 개방(위에서는 31762번 포트)
+2. 클라우드 플랫폼(위에서는 AWS)에서 생성된 LB(Load Balancer)로 요청이 들어오면 이 요청은 쿠버네티스의 워커 노드 중 하나로 전달되며, 이때 사용되는 포트는 1번에서 개방된 31762포트
+3. 워커 노드로 전달된 요청은 파드 중 하나로 전달되어 처리된다.
+
+> 즉, 위에서 LoadBalancer 타입을 명시해 서비스를 생성했지만, NodePort의 간접적인 기능 또한 자동으로 사용할 수 있다.
+
+<br>
+
+- AWS 로드 밸런서 관리 페이지에서 유형을 확인하면 'classic'으로 되어 있는데, 이는 쿠버네티스 1.18.0 버전을 기준으로 YAML 파일에서 아무런 설정을 하지 않으면 AWS의 클래식 로드 밸런서를 생성한다.
+- 원한다면 NLB(Network Load Balancer)를 생성할 수도 있으며, 다음과 같이 YAML 파일에 metadata.annotation 항목을 다음과 같이 정의하면 NLB를 사용할 수 있다.
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: hostname-svc-lb
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+spec:
+  ports:
+...
+```
+
+<br>
+
+- 참고 : AWS의 로드 밸런서 타입 CLB vs NLB
+  - `Classic Load Balancer (CLB) `
+    - 이전 세대의 로드 밸런서로, EC2-Classic과 EC2-VPC 모두에서 사용 가능
+    - HTTP, HTTPS, TCP, SSL 이러한 프로토콜을 지원하며, 애플리케이션과 네트워크 레벨 트래픽 모두에 사용할 수 있다.
+    - 간단한 로드 밸런싱이 필요한 경우 또는 기존의 EC2-Classic 환경에서 작동하는 애플리케이션에 적합하다.
+  - `Network Load Balancer (NLB)`
+    - 최신 세대 로드 밸런서로, 초당 수백만 개의 요청을 처리하고 초당 자동으로 확장할 수 있는 능력이 특징
+    - TCP, UDP, TLS 프로토콜을 지원하며, 낮은 지연 시간과 높은 처리량이 필요한 경우에 적합
+    - 정적 IP 주소를 할당 받을 수 있으며, 네트워크 퍼포먼스가 중요한 애플리케이션, 예를 들어 실시간 게임 서버 또는 IoT 환경에 적합하다.
+
+
+### 온프레미스 환경에서 LoadBalancer 타입의 서비스 사용하기
+
+
+
 ## 트래픽의 분배를 결정하는 서비스 속성 : externalTrafficPolicy
 ## 요청을 외부로 리다이렉트하는 서비스 : ExternalName
