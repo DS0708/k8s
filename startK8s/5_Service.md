@@ -495,7 +495,53 @@ spec:
 
 
 ### 온프레미스 환경에서 LoadBalancer 타입의 서비스 사용하기
+- LoadBalancer 타입을 설정하고 externalIPs만 설정해주면된다.
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: hostname-svc-lb
+spec:
+  ports:
+  - name: web-port
+    port: 8080
+    targetPort: 80
+  selector:
+    app: webserver
+  type: NodePort
+  externalIPs:
+  - 10.0.2.4
+```
+```
+$ k get svc
+NAME              TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+hostname-svc-lb   LoadBalancer   10.105.145.117   10.0.2.4      8080:31151/TCP   3s
+kubernetes        ClusterIP      10.96.0.1        <none>        443/TCP          16d
+```
+- 이제 10.0.2.4:8080으로 오는 모든 요청은, 각 워커노드의 31151포트로 로드 밸런싱 된다.
+- 만약 클러스터의 외부에서 접근하고 싶다면, nginx을 사용하여, 외부 ip로 오는 요청에 대하여 10.0.2.4:8080로 리버스 프록시(reverse proxy)해주면 된다.
+- 다음은 nginx 설정의 예시이다.
+```
+server {
+    listen 80 ssl;
+    server_name kube.covyshin.kr;
 
+    ssl_certificate /etc/letsencrypt/live/covyshin.kr/fullchain.pem; 
+    ssl_certificate_key /etc/letsencrypt/live/covyshin.kr/privkey.pem; 
+    include /etc/letsencrypt/options-ssl-nginx.conf; 
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; 
+
+    location / {
+        proxy_pass http://10.0.2.4:8080; # 프록시 목표 서버
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+``` 
+
+> 그 이외에도 MetalLB나 오픈스택과 같은 특수한 환경을 직접 구축하여 LoadBalancer 타입을 사용할 수 있다.
 
 
 ## 트래픽의 분배를 결정하는 서비스 속성 : externalTrafficPolicy
