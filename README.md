@@ -10,6 +10,7 @@
 - [Installing with kubeadm](https://github.com/DS0708/k8s/blob/main/installK8s/3_Installation_With_kubeadm.md)
 - [Installing Kubernetes on AWS with kops](https://github.com/DS0708/k8s/blob/main/installK8s/4_Installation_With_kops.md)
 - [Using Kubernetes with GKE (Google Kubernetes Engine)](https://github.com/DS0708/k8s/blob/main/installK8s/5_Installation_With_GKE.md)
+- [Installing Kubernetes on GCP with kops](https://github.com/DS0708/k8s/blob/main/installK8s/6_Installation_With_kops_On_GCP.md)
 
 ## [2. Getting Started with Kubernetes](https://github.com/DS0708/k8s/tree/main/startK8s)
 - [Before You Start with Kubernetes](https://github.com/DS0708/k8s/blob/main/startK8s/1_Intro_K8s.md)
