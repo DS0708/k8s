@@ -9,10 +9,12 @@
 $ gcloud config set project <Project ID>
 ```
 
-## ssh 연결을 위한 rsa key 생성
+## ssh 연결을 위한 rsa key 생성 
 ```
 $ ssh-keygen -t rsa -N "" -f ./id_rsa
 ```
+
+> 여기서 만든 RSA Key로 ssh 연결을 하기 위해서는 GCP에 별도로 등록이 필요함
 
 ## 클러스터 설정을 state store에 저장
 - Cloud Storage에 버킷 만들기 (서울 region에 생성)
@@ -37,6 +39,7 @@ $ kops create cluster ${NAME} \
 --state ${KOPS_STATE_STORE}/ \
 --project=${PROJECT} \
 --networking calico \
+--node-count=3
 --ssh-public-key ./id_rsa.pub
 
 W1002 15:23:49.101844   44406 new_cluster.go:1426] Gossip is deprecated, using None DNS instead
@@ -48,13 +51,14 @@ Error: error populating configuration: error fetching network "simple-k8s-local"
 
 > 후에 Cloud Resource Manager API 도 활성화 하라고 나오는데, 동일한 방식으로 API 활성화 진행하면 됨
 
-- 재시도
+- 재시도 (참고로 --node 로 워커 노드의 개수를 설정할 수 있음)
 ```
 $ kops create cluster ${NAME} \
 --zones asia-northeast3-a \
 --state ${KOPS_STATE_STORE}/ \
 --project=${PROJECT} \
 --networking calico \
+--node-count=3
 --ssh-public-key ./id_rsa.pub
 ```
 
@@ -72,7 +76,7 @@ $ kops get cluster --state ${KOPS_STATE_STORE}/ ${NAME} -oyaml
 
 - 인스턴스 그룹 정보 조회 (인스턴스 그룹은 마스터 노드와 워커 노드로 구성되어 있음)
 ```
-$ kops get instancegroup --state ${KOPS_STATE_STORE}/ --name simple.k8s.local
+$ kops get instancegroup --state ${KOPS_STATE_STORE}/ --name ${NAME}
 NAME				ROLE		MACHINETYPE	MIN	MAX	ZONES
 control-plane-asia-northeast3-a	ControlPlane	e2-medium	1	1	asia-northeast3-a
 nodes-asia-northeast3-a		Node		e2-medium	1	1	asia-northeast3-a

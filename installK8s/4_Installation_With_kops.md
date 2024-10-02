@@ -52,6 +52,7 @@
     --zones ap-northeast-2a \
     --networking calico \
     --ssh-public-key ./id_rsa.pub $NAME
+    --node-count=3
     ```
 
 ## 4. 쿠버네티스 클러스터 옵션 변경
