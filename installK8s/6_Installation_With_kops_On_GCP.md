@@ -90,7 +90,7 @@ $ kops edit ig --name ${NAME} nodes-asia-northeast3-a
 
 ## GCE에 쿠버네티스 클러스터 구성하기
 ```
-kops update cluster --yes $NAME
+$ kops update cluster --yes $NAME
 ```
 
 
