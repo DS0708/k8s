@@ -30,6 +30,12 @@ $ gsutil mb -l asia-northeast3 gs://covy-kubernetes-clusters/
 $ export KOPS_STATE_STORE=gs://covy-kubernetes-clusters/
 $ export NAME=simple.k8s.local
 $ export PROJECT=`gcloud config get-value project`
+$ export VPC=simple-k8s-vpc
+```
+
+- VPC 구성
+```
+$ gcloud compute networks create ${VPC} --subnet-mode=auto
 ```
 
 - 네트워크 플러그인 calico를 사용하고, 위에서 생성한 RSA key를 ssh 인증 방식으로 하는 클러스터 구성 (asia-northeast3-a에 구성하였고, a b c가 있음)
@@ -39,7 +45,8 @@ $ kops create cluster ${NAME} \
 --state ${KOPS_STATE_STORE}/ \
 --project=${PROJECT} \
 --networking calico \
---node-count=3
+--node-count=3 \
+--vpc=${VPC} \
 --ssh-public-key ./id_rsa.pub
 
 W1002 15:23:49.101844   44406 new_cluster.go:1426] Gossip is deprecated, using None DNS instead
@@ -58,7 +65,8 @@ $ kops create cluster ${NAME} \
 --state ${KOPS_STATE_STORE}/ \
 --project=${PROJECT} \
 --networking calico \
---node-count=3
+--node-count=3 \
+--vpc=${VPC} \
 --ssh-public-key ./id_rsa.pub
 ```
 
