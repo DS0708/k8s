@@ -6,12 +6,12 @@
 - `gcloud init` 혹은 `gcloud auth application-default login`로 로그인
 - 프로젝트 설정, 프로젝트 ID는 GCP 홈페이지에서 확인가능
 ```
-$ gcloud config set project <Project ID>
+gcloud config set project <Project ID>
 ```
 
 ## ssh 연결을 위한 rsa key 생성 
 ```
-$ ssh-keygen -t rsa -N "" -f ./id_rsa
+ssh-keygen -t rsa -N "" -f ./id_rsa
 ```
 
 > 여기서 만든 RSA Key로 ssh 연결을 하기 위해서는 GCP에 별도로 등록이 필요함
@@ -19,7 +19,7 @@ $ ssh-keygen -t rsa -N "" -f ./id_rsa
 ## 클러스터 설정을 state store에 저장
 - Cloud Storage에 버킷 만들기 (서울 region에 생성)
 ```
-$ gsutil mb -l asia-northeast3 gs://covy-kubernetes-clusters/
+gsutil mb -l asia-northeast3 gs://covy-kubernetes-clusters/
 ```
 
 > 이떄, 해당 버킷 이름은 고유해야하며, 설정된 프로젝트의 Cloud Storage에 생성됨
@@ -27,15 +27,15 @@ $ gsutil mb -l asia-northeast3 gs://covy-kubernetes-clusters/
 
 - 버킷이름,클러스터,프로젝트 이름 이름 환경변수 설정
 ```
-$ export KOPS_STATE_STORE=gs://covy-kubernetes-clusters/
-$ export NAME=simple.k8s.local
-$ export PROJECT=`gcloud config get-value project`
-$ export VPC=simple-k8s-vpc
+export KOPS_STATE_STORE=gs://covy-kubernetes-clusters/
+export NAME=gce.k8s.local
+export PROJECT=`gcloud config get-value project`
+export VPC=gce-k8s-vpc
 ```
 
 - VPC 구성
 ```
-$ gcloud compute networks create ${VPC} --subnet-mode=auto
+gcloud compute networks create ${VPC} --subnet-mode=auto
 ```
 
 - 네트워크 플러그인 calico를 사용하고, 위에서 생성한 RSA key를 ssh 인증 방식으로 하는 클러스터 구성 (asia-northeast3-a에 구성하였고, a b c가 있음)
@@ -60,7 +60,7 @@ Error: error populating configuration: error fetching network "simple-k8s-local"
 
 - 재시도 (참고로 --node 로 워커 노드의 개수를 설정할 수 있음)
 ```
-$ kops create cluster ${NAME} \
+kops create cluster ${NAME} \
 --zones asia-northeast3-a \
 --state ${KOPS_STATE_STORE}/ \
 --project=${PROJECT} \
@@ -79,7 +79,7 @@ simple.k8s.local	gce
 
 - 더 Detail한 정보 보기
 ```
-$ kops get cluster --state ${KOPS_STATE_STORE}/ ${NAME} -oyaml
+kops get cluster --state ${KOPS_STATE_STORE}/ ${NAME} -oyaml
 ```
 
 - 인스턴스 그룹 정보 조회 (인스턴스 그룹은 마스터 노드와 워커 노드로 구성되어 있음)
@@ -92,7 +92,7 @@ nodes-asia-northeast3-a		Node		e2-medium	1	1	asia-northeast3-a
 
 - 인스턴스 그룹 설정 변경 ex) 워커 노드 정보 변경하기
 ```
-$ kops edit ig --name ${NAME} nodes-asia-northeast3-a
+kops edit ig --name ${NAME} nodes-asia-northeast3-a
 ```
 
 
@@ -102,11 +102,29 @@ $ kops edit ig --name ${NAME} nodes-asia-northeast3-a
 
 ## GCE에 쿠버네티스 클러스터 구성하기
 ```
-$ kops update cluster --yes $NAME
+kops update cluster --yes $NAME
+```
+
+## 쿠버네티스 클러스터에 접근할 수 있는 설정 파일 가져오기 (kops 실행한 환경에서 해당 쿠버네티스 api-server에 접근할 수 있게 함)
+```
+kops export kubeconfig --admin
+```
+
+> 이때, kops명령어로 클러스터를 실행한 환경에서 해당 클러스터의 k8s api와 접근할 수 있음에 주의해야 한다. 이 클러스터에 대한 설정 정보는 `kubectl config use-context` 라는 명령어를 통해 설정 가능한데 관련 명령어는 다음과 같다.
+
+```
+# 현재 context 확인
+kubectl config current-context
+
+# 모든 context 확인
+kubectl config get-contexts
+
+# context 변경
+kubectl config use-context <context name>
 ```
 
 
 ## Cluster 삭제하기
 ```
-$ kops delete cluster --name ${NAME} --state ${KOPS_STATE_STORE} --yes
+kops delete cluster --name ${NAME} --state ${KOPS_STATE_STORE} --yes
 ```
