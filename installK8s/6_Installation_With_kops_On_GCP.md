@@ -46,7 +46,7 @@ $ kops create cluster ${NAME} \
 --project=${PROJECT} \
 --networking calico \
 --node-count=3 \
---vpc=${VPC} \
+--network-id=${VPC} \
 --ssh-public-key ./id_rsa.pub
 
 W1002 15:23:49.101844   44406 new_cluster.go:1426] Gossip is deprecated, using None DNS instead
@@ -66,7 +66,7 @@ kops create cluster ${NAME} \
 --project=${PROJECT} \
 --networking calico \
 --node-count=3 \
---vpc=${VPC} \
+--network-id=${VPC} \
 --ssh-public-key ./id_rsa.pub
 ```
 
